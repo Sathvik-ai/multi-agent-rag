@@ -39,9 +39,9 @@ class RetrievalAgent:
             )
             
         # 3. Query Qdrant
-        search_result = self.qdrant.search(
+        search_result = self.qdrant.query_points(
             collection_name=self.collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=query_filter,
             limit=limit,
             with_payload=True
@@ -49,7 +49,7 @@ class RetrievalAgent:
         
         # 4. Format Results
         results = []
-        for hit in search_result:
+        for hit in search_result.points:
             results.append({
                 "score": hit.score,
                 "text": hit.payload.get("text", ""),

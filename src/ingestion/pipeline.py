@@ -4,6 +4,7 @@ from pathlib import Path
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from sqlalchemy.orm import Session
 
+from src.database.connection import get_neo4j_driver
 from .parser import DocumentParser
 from .chunker import TextChunker
 from .embedder import Embedder
@@ -21,6 +22,7 @@ class IngestionPipeline:
     def __init__(self, db_session: Session, qdrant_client, collection_name="scientific_papers"):
         self.db = db_session
         self.qdrant = qdrant_client
+        self.neo4j_driver = get_neo4j_driver()
         self.collection_name = collection_name
         
         self.parser = DocumentParser()
@@ -121,5 +123,32 @@ class IngestionPipeline:
             points=qdrant_points
         )
         
+        # 5. Extract and Store Graph (Level 2)
+        print("Extracting Graph Relationships to Neo4j...")
+        self._extract_and_store_graph(doc_id, metadata)
+        
         print(f"Successfully ingested {path.name}. Document ID: {doc_id}")
         return doc_id
+
+    def _extract_and_store_graph(self, doc_id: str, metadata: dict):
+        """
+        Creates Graph nodes and relationships in Neo4j.
+        (Author) -[WROTE]-> (Paper)
+        """
+        title = metadata.get("title", "Unknown Paper")
+        
+        # Simple extraction: assumes 'author' field or 'Unknown'
+        # In a real app, you'd use LLM to extract topics and entities here.
+        author_name = metadata.get("author", "Unknown Author")
+        
+        query = """
+        MERGE (a:Author {name: $author_name})
+        MERGE (p:Paper {id: $doc_id, title: $title})
+        MERGE (a)-[:WROTE]->(p)
+        """
+        
+        try:
+            with self.neo4j_driver.session() as session:
+                session.run(query, author_name=author_name, doc_id=doc_id, title=title)
+        except Exception as e:
+            print(f"Failed to write to Neo4j: {e}")

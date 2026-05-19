@@ -9,7 +9,7 @@ def run_test():
     
     pipeline = IngestionPipeline(db_session=db, qdrant_client=qdrant)
     
-    paper_path = Path("data/datasets/medical_trials.csv")
+    paper_path = Path("data/papers/attention_is_all_you_need.pdf")
     
     if not paper_path.exists():
         print("Paper not found!")
