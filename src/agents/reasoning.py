@@ -138,11 +138,27 @@ class ReasoningAgent:
         """
         
         if self.api_key_valid:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt
-            )
-            answer_text = response.text
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt
+                )
+                answer_text = response.text
+            except Exception as e:
+                print(f"Gemini generation failed: {e}. Falling back to deterministic summary.")
+                # Self-healing fallback: compile a clean summary of the evidence
+                if evidence:
+                    top_text = evidence[0]['text'][:300].strip().replace('\n', ' ')
+                    answer_text = (
+                        f"[Service Degradation Fallback: {str(e)}]\n\n"
+                        f"Based on retrieved sources (e.g., '{evidence[0].get('title', 'Document')}'):\n"
+                        f"\"{top_text}...\" [Source 1]"
+                    )
+                else:
+                    answer_text = (
+                        f"[Service Degradation Fallback: {str(e)}]\n\n"
+                        "I don't have enough grounded information to answer this question."
+                    )
         else:
             answer_text = (
                 "[Mock Mode: No GEMINI_API_KEY provided]\n\n"
