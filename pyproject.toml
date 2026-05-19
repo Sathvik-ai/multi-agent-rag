@@ -1,0 +1,23 @@
+[project]
+name = "rag-pipeline"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.136.1",
+    "langchain-google-genai>=4.2.2",
+    "neo4j>=6.2.0",
+    "pandas>=3.0.3",
+    "psycopg2-binary>=2.9.12",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.1",
+    "pymupdf>=1.27.2.3",
+    "python-dotenv>=1.2.2",
+    "python-multipart>=0.0.29",
+    "qdrant-client>=1.18.0",
+    "redis>=7.4.0",
+    "sentence-transformers>=5.5.0",
+    "sqlalchemy>=2.0.49",
+    "uvicorn>=0.47.0",
+]
