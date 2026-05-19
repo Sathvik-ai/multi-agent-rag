@@ -11,7 +11,9 @@ from src.database.models import QueryLog
 from src.database.init_db import init_db
 from src.ingestion.pipeline import IngestionPipeline
 from src.agents.reasoning import ReasoningAgent
+from src.agents.hallucination import HallucinationDetector
 from src.api.cache import CacheManager
+from src.api.eval_data import EVAL_DATASET
 
 # ─────────────────────────────────────────────────────────────────
 # App Setup
@@ -37,6 +39,7 @@ app.add_middleware(
 # Shared singletons — initialized once at startup
 cache = CacheManager()
 reasoning_agent = ReasoningAgent()
+hallucination_detector = HallucinationDetector()
 
 @app.on_event("startup")
 def startup_event():
@@ -62,6 +65,7 @@ class QueryResponse(BaseModel):
     cache_status: str                  # 'hit' or 'miss'
     sources: list[dict]
     latency: dict
+    hallucination: Optional[dict] = None  # Grounding audit result
 
 class IngestResponse(BaseModel):
     message: str
@@ -153,7 +157,15 @@ def query(request: QueryRequest):
         result['latency']['total_ms'] = total_ms
         result['cache_status'] = 'miss'
         
-        # 3. Log query to PostgreSQL for observability
+        # 3. Hallucination Detection (Level 3)
+        hall_result = hallucination_detector.evaluate(
+            question=request.question,
+            answer=result['answer'],
+            sources=result['sources']
+        )
+        result['hallucination'] = hall_result
+        
+        # 4. Log query to PostgreSQL for observability
         log = QueryLog(
             query_text=request.question,
             latency_ms=total_ms,
@@ -163,7 +175,7 @@ def query(request: QueryRequest):
         db.add(log)
         db.commit()
         
-        # 4. Store result in Redis cache for next time
+        # 5. Store result in Redis cache for next time
         cache.set(request.question, result)
         
         return result
@@ -194,3 +206,52 @@ def list_papers_in_graph():
                 "document_id": record["doc_id"]
             })
     return {"papers": results, "count": len(results)}
+
+
+@app.post("/evaluate", tags=["Evaluation"])
+def evaluate_pipeline():
+    """
+    Level 3: Systematic Evaluation Endpoint.
+    Runs our built-in ground-truth dataset against the live pipeline and 
+    reports accuracy (keyword hit rate) and hallucination scores per question.
+    """
+    results = []
+    passed = 0
+
+    for item in EVAL_DATASET:
+        question = item["question"]
+        expected_keywords = item["expected_keywords"]
+
+        # Run the RAG pipeline on this question
+        rag_result = reasoning_agent.ask(question=question, ingest_pipeline=None)
+        answer = rag_result.get("answer", "").lower()
+
+        # Keyword coverage check
+        hits = [kw for kw in expected_keywords if kw.lower() in answer]
+        accuracy = round(len(hits) / len(expected_keywords), 2)
+        if accuracy >= 0.5:
+            passed += 1
+
+        # Hallucination audit
+        hall = hallucination_detector.evaluate(
+            question=question,
+            answer=rag_result.get("answer", ""),
+            sources=rag_result.get("sources", [])
+        )
+
+        results.append({
+            "question": question,
+            "keyword_accuracy": accuracy,
+            "keywords_hit": hits,
+            "keywords_expected": expected_keywords,
+            "retrieval_confidence": rag_result.get("confidence", 0),
+            "hallucination": hall,
+            "answer_snippet": rag_result.get("answer", "")[:300]
+        })
+
+    return {
+        "total_questions": len(EVAL_DATASET),
+        "passed": passed,
+        "overall_accuracy": round(passed / len(EVAL_DATASET), 2),
+        "results": results
+    }

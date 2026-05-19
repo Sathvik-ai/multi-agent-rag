@@ -1,6 +1,22 @@
 version: '3.8'
 
 services:
+  # ─── FastAPI Application ──────────────────────────────────────────
+  api:
+    build: .
+    container_name: rag_api
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+      - qdrant
+      - neo4j
+    volumes:
+      - ./data:/app/data      # Mount data dir so papers/datasets persist
+    restart: unless-stopped
+
   # PostgreSQL for metadata, lineage, latency tracking
   postgres:
     image: postgres:15
