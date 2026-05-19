@@ -38,25 +38,27 @@ class DocumentParser:
     def parse_csv(file_path: str | Path, text_columns: List[str] = None) -> Dict[str, Any]:
         """
         Parses a structured scientific dataset (CSV).
-        Converts rows into text documents.
+        
+        KEY FIX: Returns each row as a SEPARATE pre-chunked entry instead of
+        joining all rows into one blob. This ensures each row gets its OWN
+        embedding vector in Qdrant, so semantic search for 'Asthma' returns
+        the BreathMax row specifically — not a chunk that averages across
+        all disease rows.
         """
         df = pd.read_csv(file_path)
         
-        # If text columns aren't specified, use all columns of dtype object/string
-        if not text_columns:
-            text_columns = df.select_dtypes(include=['object', 'string']).columns.tolist()
+        # Use ALL columns (both text and numeric) for maximum context per row
+        all_columns = df.columns.tolist()
             
-        # Combine the selected text columns into a single string representation per row
-        documents = []
+        # Each row becomes its own self-contained text document
+        row_documents = []
         for index, row in df.iterrows():
-            row_text = []
-            for col in text_columns:
+            row_parts = []
+            for col in all_columns:
                 if pd.notna(row[col]):
-                    row_text.append(f"{col}: {row[col]}")
-            documents.append("\n".join(row_text))
+                    row_parts.append(f"{col}: {row[col]}")
+            row_documents.append("\n".join(row_parts))
             
-        full_text = "\n\n---\n\n".join(documents)
-        
         metadata = {
             "title": Path(file_path).name,
             "rows": len(df),
@@ -64,10 +66,14 @@ class DocumentParser:
             "source_type": "csv"
         }
         
+        # Return pre_chunked=True so the pipeline skips the text chunker
+        # and uses these individual row strings directly as embeddings
         return {
-            "text": full_text,
+            "text": row_documents[0] if row_documents else "",  # For Neo4j graph extraction
+            "pre_chunked": row_documents,                        # All rows as individual chunks
             "metadata": metadata
         }
+
 
     @classmethod
     def parse_file(cls, file_path: str | Path) -> Dict[str, Any]:

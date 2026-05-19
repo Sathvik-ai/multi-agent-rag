@@ -63,8 +63,14 @@ class IngestionPipeline:
         metadata = parsed_data["metadata"]
         
         # 2. Chunk
-        print("Chunking text...")
-        chunks = self.chunker.split_text(text)
+        # For CSVs: parser already returns individual row chunks (pre_chunked)
+        # For PDFs: run through the text chunker with overlap
+        if "pre_chunked" in parsed_data:
+            chunks = parsed_data["pre_chunked"]
+            print(f"CSV mode: using {len(chunks)} pre-chunked rows (1 row = 1 vector)...")
+        else:
+            print("Chunking text...")
+            chunks = self.chunker.split_text(text)
         
         if not chunks:
             print("No text extracted to chunk.")
