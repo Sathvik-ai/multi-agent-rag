@@ -1,6 +1,6 @@
 import os
 import json
-import google.generativeai as genai
+from google import genai
 
 class ExtractionAgent:
     """
@@ -9,14 +9,15 @@ class ExtractionAgent:
     for accurate Knowledge Graph population in Neo4j.
     """
     
-    def __init__(self, model_name: str = 'gemini-1.5-flash'):
+    def __init__(self, model_name: str = 'gemini-2.5-flash'):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key or api_key == "your_gemini_api_key_here":
             self.api_key_valid = False
+            self.client = None
         else:
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel(model_name)
+            self.client = genai.Client(api_key=api_key)
             self.api_key_valid = True
+        self.model_name = model_name
 
     def extract_metadata(self, first_page_text: str) -> dict:
         """
@@ -48,7 +49,10 @@ class ExtractionAgent:
         """
         
         try:
-            response = self.model.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt
+            )
             # Clean up the response in case it contains markdown code blocks
             clean_json = response.text.replace('```json', '').replace('```', '').strip()
             return json.loads(clean_json)

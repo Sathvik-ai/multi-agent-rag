@@ -1,8 +1,7 @@
 import os
-import hashlib
 import json
 import time
-import google.generativeai as genai
+from google import genai
 from typing import List, Dict, Any
 
 from .retrieval import RetrievalAgent
@@ -24,15 +23,16 @@ class ReasoningAgent:
        ingest new papers on-the-fly, then re-retrieves.
     """
     
-    def __init__(self, model_name: str = 'gemini-1.5-flash'):
+    def __init__(self, model_name: str = 'gemini-2.5-flash'):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key or api_key == "your_gemini_api_key_here":
             self.api_key_valid = False
+            self.client = None
         else:
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel(model_name)
+            self.client = genai.Client(api_key=api_key)
             self.api_key_valid = True
-            
+        
+        self.model_name = model_name
         self.retriever = RetrievalAgent()
         self.decomposer = QueryDecompositionAgent()
         self.arxiv_tool = ArxivTool()
@@ -138,7 +138,10 @@ class ReasoningAgent:
         """
         
         if self.api_key_valid:
-            response = self.model.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt
+            )
             answer_text = response.text
         else:
             answer_text = (
