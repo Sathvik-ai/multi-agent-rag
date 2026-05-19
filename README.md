@@ -16,7 +16,7 @@ This repository implements a **multi-agent retrieval and reasoning pipeline** de
 ## 🛠️ Current Status & Results
 
 ### Phase 2 Complete: Ingestion Pipeline (Level 1)
-The data ingestion pipeline has been completely built and tested. It successfully parses documents, splits them intelligently, generates vectors, and securely links metadata between Postgres and Qdrant.
+The data ingestion pipeline has been completely built and tested. It successfully parses documents, splits them intelligently, generates vectors, and securely links metadata between Postgres and Qdrant. It also extracts Graph nodes to Neo4j.
 
 **Test Ingestion Results (Success Level: 100%)**
 ```
@@ -35,6 +35,33 @@ Storing in PostgreSQL and Qdrant...
 SUCCESS! Document successfully ingested with ID: 7d543d39-6099-441a-9a24-e77a1a4547fa
 ```
 
+### Phase 3 Complete: Retrieval & Reasoning Agents (Level 1 & 2)
+We built the `RetrievalAgent` to query Qdrant vectors and the `ReasoningAgent` to formulate answers using Gemini. It supports a Mock Mode when the API key is not provided.
+
+**Test RAG Results:**
+```text
+[?] User Question: Which drug is targeting Asthma and what is its efficacy score?
+
+Retrieving context and formulating answer...
+Retrieving context for query: 'Which drug is targeting Asthma and what is its efficacy score?'
+
+==================================================
+🤖 GEMINI AGENT RESPONSE
+==================================================
+[Mock Mode: No API Key Provided]
+
+Based on Source [1], I can confirm that the text discusses topics related to your question. (Please provide a real GEMINI_API_KEY to see actual LLM output).
+==================================================
+
+📚 Sources Retrieved (Top 3):
+
+Source 1 [Score: 0.4801]:
+Title: medical_trials.csv
+Text Snippet: trial_id: TR-101
+disease_target: Alzheimer's Disease
+drug_name: Neurogen-X...
+```
+
 ## 📚 Sample Data
 The `data/` directory contains sample data used for testing:
 *   `data/papers/rag_original.pdf`: *Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks*
@@ -42,12 +69,17 @@ The `data/` directory contains sample data used for testing:
 *   `data/papers/flash_attention.pdf`: *FlashAttention: Fast and Memory-Efficient Exact Attention*
 *   `data/datasets/medical_trials.csv`: A mock dataset of 10 Phase 1-4 clinical drug trials.
 
-## 🐳 Quickstart
+## 🐳 Quickstart & Dashboards
 
 To run the infrastructure (PostgreSQL, Qdrant, Neo4j, Redis):
 ```bash
 docker compose up -d
 ```
+
+### 📊 Local Dashboards
+Once Docker is running, you can visually explore your data via these built-in UIs:
+*   **Qdrant Vector Database:** [http://localhost:6333/dashboard](http://localhost:6333/dashboard)
+*   **Neo4j Knowledge Graph:** [http://localhost:7474](http://localhost:7474) (Username: `neo4j` | Password: `rag_password`)
 
 To run the Python pipeline, ensure you use the `uv` package manager:
 ```bash
