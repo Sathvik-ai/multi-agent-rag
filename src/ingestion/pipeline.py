@@ -8,6 +8,7 @@ from src.database.connection import get_neo4j_driver
 from .parser import DocumentParser
 from .chunker import TextChunker
 from .embedder import Embedder
+from ..agents.extraction import ExtractionAgent
 from ..database.models import DocumentMetadata, DocumentChunk
 
 class IngestionPipeline:
@@ -28,6 +29,7 @@ class IngestionPipeline:
         self.parser = DocumentParser()
         self.chunker = TextChunker()
         self.embedder = Embedder()
+        self.extraction_agent = ExtractionAgent()
         
         self._ensure_qdrant_collection()
 
@@ -125,30 +127,36 @@ class IngestionPipeline:
         
         # 5. Extract and Store Graph (Level 2)
         print("Extracting Graph Relationships to Neo4j...")
-        self._extract_and_store_graph(doc_id, metadata)
+        self._extract_and_store_graph(doc_id, metadata, text)
         
         print(f"Successfully ingested {path.name}. Document ID: {doc_id}")
         return doc_id
 
-    def _extract_and_store_graph(self, doc_id: str, metadata: dict):
+    def _extract_and_store_graph(self, doc_id: str, metadata: dict, full_text: str):
         """
-        Creates Graph nodes and relationships in Neo4j.
+        Creates Graph nodes and relationships in Neo4j using the ExtractionAgent.
         (Author) -[WROTE]-> (Paper)
         """
-        title = metadata.get("title", "Unknown Paper")
-        
-        # Simple extraction: assumes 'author' field or 'Unknown'
-        # In a real app, you'd use LLM to extract topics and entities here.
-        author_name = metadata.get("author", "Unknown Author")
+        if metadata.get("source_type") == "pdf":
+            # Use the LLM / Extraction Agent to get perfect authors and titles
+            extracted = self.extraction_agent.extract_metadata(full_text[:3000])
+            title = extracted.get("title", metadata.get("title", "Unknown Paper"))
+            authors = extracted.get("authors", ["Unknown Author"])
+        else:
+            title = metadata.get("title", "Unknown Dataset")
+            authors = ["Dataset Author"]
         
         query = """
-        MERGE (a:Author {name: $author_name})
-        MERGE (p:Paper {id: $doc_id, title: $title})
+        MERGE (p:Paper {id: $doc_id})
+        SET p.title = $title
+        WITH p
+        UNWIND $authors AS author_name
+        MERGE (a:Author {name: author_name})
         MERGE (a)-[:WROTE]->(p)
         """
         
         try:
             with self.neo4j_driver.session() as session:
-                session.run(query, author_name=author_name, doc_id=doc_id, title=title)
+                session.run(query, authors=authors, doc_id=doc_id, title=title)
         except Exception as e:
             print(f"Failed to write to Neo4j: {e}")
