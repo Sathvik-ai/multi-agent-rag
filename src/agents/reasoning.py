@@ -1,7 +1,7 @@
 import os
 import json
 import time
-from google import genai
+from openai import OpenAI
 from typing import List, Dict, Any
 
 from .retrieval import RetrievalAgent
@@ -23,13 +23,16 @@ class ReasoningAgent:
        ingest new papers on-the-fly, then re-retrieves.
     """
     
-    def __init__(self, model_name: str = 'gemini-2.5-flash'):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key or api_key == "your_gemini_api_key_here":
+    def __init__(self, model_name: str = 'deepseek-ai/DeepSeek-V4-Flash:novita'):
+        api_key = os.getenv("HF_TOKEN")
+        if not api_key or api_key == "your_hf_token_here":
             self.api_key_valid = False
             self.client = None
         else:
-            self.client = genai.Client(api_key=api_key)
+            self.client = OpenAI(
+                base_url="https://router.huggingface.co/v1",
+                api_key=api_key
+            )
             self.api_key_valid = True
         
         self.model_name = model_name
@@ -139,13 +142,15 @@ class ReasoningAgent:
         
         if self.api_key_valid:
             try:
-                response = self.client.models.generate_content(
+                response = self.client.chat.completions.create(
                     model=self.model_name,
-                    contents=prompt
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
                 )
-                answer_text = response.text
+                answer_text = response.choices[0].message.content
             except Exception as e:
-                print(f"Gemini generation failed: {e}. Falling back to deterministic summary.")
+                print(f"LLM generation failed: {e}. Falling back to deterministic summary.")
                 # Self-healing fallback: compile a clean summary of the evidence
                 if evidence:
                     top_text = evidence[0]['text'][:300].strip().replace('\n', ' ')
@@ -161,9 +166,9 @@ class ReasoningAgent:
                     )
         else:
             answer_text = (
-                "[Mock Mode: No GEMINI_API_KEY provided]\n\n"
+                "[Mock Mode: No HF_TOKEN provided]\n\n"
                 f"Based on {len(evidence)} evidence chunks retrieved across {len(sub_questions)} sub-questions, "
-                "I would synthesize a grounded answer here using Gemini."
+                "I would synthesize a grounded answer here using DeepSeek."
             )
         timings['llm_ms'] = round((time.time() - t0) * 1000, 2)
         timings['total_ms'] = sum(timings.values())

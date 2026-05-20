@@ -1,6 +1,6 @@
 import os
 import json
-from google import genai
+from openai import OpenAI
 
 class ExtractionAgent:
     """
@@ -9,13 +9,16 @@ class ExtractionAgent:
     for accurate Knowledge Graph population in Neo4j.
     """
     
-    def __init__(self, model_name: str = 'gemini-2.5-flash'):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key or api_key == "your_gemini_api_key_here":
+    def __init__(self, model_name: str = 'deepseek-ai/DeepSeek-V4-Flash:novita'):
+        api_key = os.getenv("HF_TOKEN")
+        if not api_key or api_key == "your_hf_token_here":
             self.api_key_valid = False
             self.client = None
         else:
-            self.client = genai.Client(api_key=api_key)
+            self.client = OpenAI(
+                base_url="https://router.huggingface.co/v1",
+                api_key=api_key
+            )
             self.api_key_valid = True
         self.model_name = model_name
 
@@ -49,12 +52,14 @@ class ExtractionAgent:
         """
         
         try:
-            response = self.client.models.generate_content(
+            response = self.client.chat.completions.create(
                 model=self.model_name,
-                contents=prompt
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
             )
             # Clean up the response in case it contains markdown code blocks
-            clean_json = response.text.replace('```json', '').replace('```', '').strip()
+            clean_json = response.choices[0].message.content.replace('```json', '').replace('```', '').strip()
             return json.loads(clean_json)
         except Exception as e:
             print(f"Extraction Agent Error: {e}")

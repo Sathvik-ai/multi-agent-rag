@@ -66,11 +66,11 @@ User Question
 |---|---|---|
 | **API** | FastAPI + asyncio | Web server & async endpoints |
 | **Embeddings** | SentenceTransformers `all-MiniLM-L6-v2` | Free, local, 384-dim vectors |
-| **Vector DB** | Qdrant | Semantic similarity search |
+| **Vector Search** | Qdrant | Local semantic similarity search |
 | **Relational DB** | PostgreSQL | Document lineage & query logs |
 | **Graph DB** | Neo4j | Author → Paper entity relationships |
 | **Cache** | Redis | Fingerprinted query caching |
-| **LLM** | Gemini 2.5 Flash | Reasoning & decomposition |
+| **LLM** | DeepSeek-V4 | Reasoning & decomposition |
 | **Deployment** | Docker Compose | Containerized infrastructure |
 
 ---
@@ -152,7 +152,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Copy and configure environment
 cp .env.example .env
-# Add your GEMINI_API_KEY from https://aistudio.google.com/apikey
+# Add your HF_TOKEN from Hugging Face Settings -> Access Tokens
+# Note: Ensure you have access to serverless inference endpoints
 ```
 
 ### 2. Start Infrastructure
