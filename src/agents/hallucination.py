@@ -21,7 +21,7 @@ class HallucinationDetector:
 
     def __init__(self, model_name: str = 'deepseek-ai/DeepSeek-V4-Flash:novita'):
         api_key = os.getenv("HF_TOKEN")
-        if not api_key or api_key == "your_hf_token_here":
+        if not api_key or api_key.lower() == "your_hf_token_here":
             self.api_key_valid = False
             self.client = None
         else:

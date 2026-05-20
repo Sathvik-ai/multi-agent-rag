@@ -37,7 +37,7 @@ class QueryDecompositionAgent:
                 api_key=gemini_api_key
             )
             
-        if hf_token and hf_token != "your_hf_token_here":
+        if hf_token and hf_token.lower() != "your_hf_token_here":
             self.deepseek_client = OpenAI(
                 base_url="https://router.huggingface.co/v1",
                 api_key=hf_token
