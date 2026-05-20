@@ -128,28 +128,47 @@ Shunyu Yao         → ReAct: Synergizing Reasoning and Acting in Language Model
 
 ## 🚀 Quickstart
 
-### 1. Prerequisites
+### 📦 Run Pre-Built Production Package (Fastest!)
+You can pull and run the fully compiled production package directly from **GitHub Container Registry (GHCR)**:
+```bash
+# 1. Pull the official production-ready container image
+docker pull ghcr.io/sathvik-ai/multi-agent-rag:latest
+
+# 2. Add your environment credentials in .env file
+cp .env.example .env
+# Edit .env and paste your GEMINI_API_KEY and HF_TOKEN
+
+# 3. Start the entire ecosystem (API, Postgres, Redis, Qdrant, Neo4j) 
+docker compose up -d
+```
+
+### 🛠️ Run Local Development Mode
+If you prefer running in local python/development mode:
+
+#### 1. Prerequisites & Installation
 ```bash
 # Install uv (Python package manager)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Copy and configure environment
+# Clone repository and install all packages in a sync virtual environment
+uv sync
+
+# Configure environment
 cp .env.example .env
-# Add your HF_TOKEN from Hugging Face Settings -> Access Tokens
-# Note: Ensure you have access to serverless inference endpoints
+# Paste your GEMINI_API_KEY and HF_TOKEN in .env
 ```
 
-### 2. Start Infrastructure
+#### 2. Start Infrastructure
 ```bash
 docker compose up -d
 ```
 
-### 3. Run the API
+#### 3. Run the API Server
 ```bash
 uv run uvicorn src.api.main:app --reload --port 8000
 ```
 
-### 4. Ingest Sample Papers
+#### 4. Ingest Sample Papers
 ```bash
 uv run python test_ingest.py
 ```
@@ -194,4 +213,4 @@ curl -X POST http://localhost:8000/query \
 | Phase 2: Ingestion Pipeline | ✅ Done | PDF + CSV parser, chunker, embedder |
 | Phase 3: Retrieval & Reasoning | ✅ Done | Semantic search + Gemini agent |
 | Phase 4: API & Caching | ✅ Done | FastAPI, Redis cache, ArXiv fallback |
-| Phase 5: Robustness | 🔄 In Progress | Hallucination detection, evaluation, Docker |
+| Phase 5: Robustness & CD | ✅ Done | Grounding audit agent, metrics endpoint, GHCR continuous CD |
