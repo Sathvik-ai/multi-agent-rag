@@ -1,0 +1,11 @@
+trial_id,disease_target,drug_name,phase,status,efficacy_score,side_effects,conclusion
+TR-101,Alzheimer's Disease,Neurogen-X,Phase 3,Completed,0.78,Nausea; Dizziness,Statistically significant cognitive improvement compared to placebo.
+TR-102,Type 2 Diabetes,Glucostab,Phase 2,Active,0.85,Headache,Strong potential for sustained blood sugar regulation.
+TR-103,Lung Cancer,PulmoKill,Phase 1,Terminated,0.12,Severe toxicity,Trial halted due to severe adverse events in 30% of cohort.
+TR-104,Rheumatoid Arthritis,JointRelief,Phase 3,Completed,0.91,Mild fatigue,Highly effective in reducing joint inflammation with minimal side effects.
+TR-105,Major Depressive Disorder,Serenify,Phase 2,Active,0.65,Insomnia; Weight gain,Moderate efficacy observed but side effect profile requires further study.
+TR-106,Hypertension,CardioClear,Phase 4,Completed,0.88,Cough,Post-market surveillance confirms long-term safety and efficacy.
+TR-107,Multiple Sclerosis,MyelinRestore,Phase 2,Completed,0.71,Fever,Promising results in slowing disease progression. Proceeding to Phase 3.
+TR-108,Asthma,BreathMax,Phase 3,Completed,0.95,None,Excellent efficacy in reducing severe asthma attacks. FDA approval pending.
+TR-109,Parkinson's Disease,DopaSync,Phase 1,Active,0.45,Tremors,Initial safety profile acceptable. Efficacy data is still preliminary.
+TR-110,Breast Cancer,OncoShield,Phase 3,Active,0.82,Fatigue; Hair loss,Significant reduction in tumor size observed in early Phase 3 readouts.
