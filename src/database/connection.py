@@ -16,7 +16,9 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "rag_metadata")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
 
-DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -30,10 +32,14 @@ def get_db():
         db.close()
 
 # --- Qdrant Setup ---
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 
 def get_qdrant_client():
+    if QDRANT_URL:
+        return QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
     return QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
 
 # --- Neo4j Setup ---
@@ -45,8 +51,12 @@ def get_neo4j_driver():
     return GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
 
 # --- Redis Setup ---
+REDIS_URL = os.getenv("REDIS_URL")
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
 
 def get_redis_client():
-    return redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
+    if REDIS_URL:
+        return redis.Redis.from_url(REDIS_URL, decode_responses=True)
+    return redis.Redis(host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASSWORD, db=0, decode_responses=True)
