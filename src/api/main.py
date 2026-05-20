@@ -1,6 +1,13 @@
+import os
 import time
+import copy
 from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
+
+# ─── CRITICAL: Load .env BEFORE importing any agents so HF_TOKEN is available
+# when ReasoningAgent / QueryDecompositionAgent call os.getenv() in __init__.
+load_dotenv()
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -62,6 +69,7 @@ class QueryResponse(BaseModel):
     answer: str
     confidence: float
     arxiv_fallback_used: bool
+    llm_fallback_used: Optional[bool] = False
     cache_status: str                  # 'hit' or 'miss'
     sources: list[dict]
     latency: dict
@@ -81,7 +89,74 @@ def root():
 
 @app.get("/health", tags=["Health"])
 def health():
-    return {"status": "healthy"}
+    postgres_status = "down"
+    try:
+        from sqlalchemy import text
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        postgres_status = "up"
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+    redis_status = "down"
+    try:
+        if cache.redis.ping():
+            redis_status = "up"
+    except Exception:
+        pass
+
+    qdrant_status = "down"
+    try:
+        qdrant_client = get_qdrant_client()
+        qdrant_client.get_collections()
+        qdrant_status = "up"
+    except Exception:
+        pass
+
+    llm_status = "inactive"
+    try:
+        if reasoning_agent._ensure_clients():
+            llm_status = "active"
+    except Exception:
+        pass
+
+    overall_status = "healthy"
+    if postgres_status == "down" or redis_status == "down" or qdrant_status == "down":
+        overall_status = "degraded"
+
+    return {
+        "status": overall_status,
+        "postgres": postgres_status,
+        "redis": redis_status,
+        "qdrant": qdrant_status,
+        "llm_provider": llm_status
+    }
+
+@app.get("/metrics", tags=["Observability"])
+def get_metrics():
+    try:
+        request_count = int(cache.redis.get("metrics:request_count") or 0)
+        cache_hit_count = int(cache.redis.get("metrics:cache_hit_count") or 0)
+        fallback_count = int(cache.redis.get("metrics:fallback_count") or 0)
+        total_latency_ms = float(cache.redis.get("metrics:total_latency_ms") or 0.0)
+        total_grounding_score = float(cache.redis.get("metrics:total_grounding_score") or 0.0)
+        grounding_count = int(cache.redis.get("metrics:grounding_count") or 0)
+
+        avg_latency = f"{round(total_latency_ms / request_count, 2)} ms" if request_count > 0 else "0.00 ms"
+        cache_hit_rate = round(cache_hit_count / request_count, 4) if request_count > 0 else 0.0
+        avg_hallucination = round(total_grounding_score / grounding_count, 4) if grounding_count > 0 else 1.0
+
+        return {
+            "average_latency": avg_latency,
+            "cache_hit_rate": cache_hit_rate,
+            "fallback_count": fallback_count,
+            "request_count": request_count,
+            "hallucination_score_averages": avg_hallucination
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch metrics: {e}")
 
 
 @app.post("/ingest", response_model=IngestResponse, tags=["Ingestion"])
@@ -139,7 +214,19 @@ def query(request: QueryRequest):
     # 1. Check Redis cache first
     cached = cache.get(request.question)
     if cached:
-        cached['cache_status'] = 'hit'
+        total_ms = round((time.time() - t_start) * 1000, 2)
+        cached['cache_status'] = 'hit'  # Override the stored 'miss' value
+        cached.pop('latency', None)      # Remove stale latency from stored copy
+        cached['latency'] = {'total_ms': total_ms}
+        
+        # Log cache hit metrics
+        try:
+            cache.redis.incr("metrics:request_count")
+            cache.redis.incr("metrics:cache_hit_count")
+            cache.redis.incrbyfloat("metrics:total_latency_ms", total_ms)
+        except Exception as e:
+            print(f"Metrics logging error on cache hit: {e}")
+            
         return cached
     
     # 2. Run the multi-hop reasoning pipeline
@@ -165,6 +252,18 @@ def query(request: QueryRequest):
         )
         result['hallucination'] = hall_result
         
+        # Log cache miss metrics
+        try:
+            cache.redis.incr("metrics:request_count")
+            cache.redis.incrbyfloat("metrics:total_latency_ms", total_ms)
+            if result.get('llm_fallback_used'):
+                cache.redis.incr("metrics:fallback_count")
+            if hall_result and 'grounding_score' in hall_result:
+                cache.redis.incrbyfloat("metrics:total_grounding_score", hall_result['grounding_score'])
+                cache.redis.incr("metrics:grounding_count")
+        except Exception as e:
+            print(f"Metrics logging error on cache miss: {e}")
+            
         # 4. Log query to PostgreSQL for observability
         log = QueryLog(
             query_text=request.question,
@@ -176,7 +275,10 @@ def query(request: QueryRequest):
         db.commit()
         
         # 5. Store result in Redis cache for next time
-        cache.set(request.question, result)
+        # Deep-copy to avoid mutating the response; ensure all values are JSON-safe
+        cache_payload = copy.deepcopy(result)
+        cache_payload['cache_status'] = 'miss'  # Always store as miss; set to hit on retrieval
+        cache.set(request.question, cache_payload)
         
         return result
     

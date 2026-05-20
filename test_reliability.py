@@ -34,7 +34,7 @@ def run_test(name: str, fn) -> bool:
 def query(question: str, fallback: bool = False) -> Dict[str, Any]:
     r = requests.post(f"{BASE_URL}/query",
         json={"question": question, "use_multihop": True, "enable_arxiv_fallback": fallback},
-        timeout=60)
+        timeout=120)
     r.raise_for_status()
     return r.json()
 

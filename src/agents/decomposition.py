@@ -15,26 +15,47 @@ class QueryDecompositionAgent:
     multiple sources simultaneously (e.g., comparing techniques across papers).
     """
     
-    def __init__(self, model_name: str = 'deepseek-ai/DeepSeek-V4-Flash:novita'):
-        api_key = os.getenv("HF_TOKEN")
-        if not api_key or api_key == "your_hf_token_here":
-            self.api_key_valid = False
-            self.client = None
-        else:
-            self.client = OpenAI(
-                base_url="https://router.huggingface.co/v1",
-                api_key=api_key
+    def __init__(self, primary_model: str = 'gemini-2.5-flash', fallback_model: str = 'deepseek-ai/DeepSeek-V4-Flash:novita'):
+        # API keys are read lazily at first call via _ensure_clients()
+        self.primary_model = primary_model
+        self.fallback_model = fallback_model
+        self.gemini_client = None
+        self.deepseek_client = None
+        self._clients_ready = False
+
+    def _ensure_clients(self) -> bool:
+        """Lazily builds the OpenAI clients at request time, not import time."""
+        if self._clients_ready:
+            return True
+            
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        hf_token = os.getenv("HF_TOKEN")
+
+        if gemini_api_key and gemini_api_key != "your_gemini_api_key_here":
+            self.gemini_client = OpenAI(
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                api_key=gemini_api_key
             )
-            self.api_key_valid = True
-        self.model_name = model_name
+            
+        if hf_token and hf_token != "your_hf_token_here":
+            self.deepseek_client = OpenAI(
+                base_url="https://router.huggingface.co/v1",
+                api_key=hf_token
+            )
+
+        if self.gemini_client or self.deepseek_client:
+            self._clients_ready = True
+            return True
+            
+        return False
 
     def decompose(self, question: str, max_subqueries: int = 3) -> List[str]:
         """
         Takes a complex question and returns a list of focused sub-questions
         that together answer the original question completely.
         """
-        if not self.api_key_valid:
-            # Mock decomposition for development without API key
+        if not self._ensure_clients():
+            # Mock decomposition for development without API keys
             print("[Mock] Query decomposition: returning original question as single sub-query.")
             return [question]
         
@@ -50,19 +71,42 @@ class QueryDecompositionAgent:
         Question: {question}
         """
         
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            clean = response.choices[0].message.content.replace('```json', '').replace('```', '').strip()
-            sub_questions = json.loads(clean)
-            # Ensure we always have a list of strings
-            if isinstance(sub_questions, list):
-                return [str(q) for q in sub_questions[:max_subqueries]]
-        except Exception as e:
-            print(f"Decomposition failed: {e}. Using original question.")
+        response_content = None
+        
+        # Primary: Gemini
+        if self.gemini_client:
+            try:
+                response = self.gemini_client.chat.completions.create(
+                    model=self.primary_model,
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                response_content = response.choices[0].message.content
+            except Exception as e:
+                print(f"Gemini Decomposition failed: {e}. Falling back to DeepSeek...")
+                
+        # Fallback: DeepSeek
+        if not response_content and self.deepseek_client:
+            try:
+                response = self.deepseek_client.chat.completions.create(
+                    model=self.fallback_model,
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ]
+                )
+                response_content = response.choices[0].message.content
+            except Exception as e:
+                print(f"DeepSeek Decomposition failed: {e}. Using original question.")
+                
+        if response_content:
+            try:
+                clean = response_content.replace('```json', '').replace('```', '').strip()
+                sub_questions = json.loads(clean)
+                # Ensure we always have a list of strings
+                if isinstance(sub_questions, list):
+                    return [str(q) for q in sub_questions[:max_subqueries]]
+            except Exception as e:
+                print(f"Failed to parse decomposition JSON: {e}")
         
         return [question]

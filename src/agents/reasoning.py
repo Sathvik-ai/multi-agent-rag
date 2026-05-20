@@ -23,22 +23,46 @@ class ReasoningAgent:
        ingest new papers on-the-fly, then re-retrieves.
     """
     
-    def __init__(self, model_name: str = 'deepseek-ai/DeepSeek-V4-Flash:novita'):
-        api_key = os.getenv("HF_TOKEN")
-        if not api_key or api_key == "your_hf_token_here":
-            self.api_key_valid = False
-            self.client = None
-        else:
-            self.client = OpenAI(
-                base_url="https://router.huggingface.co/v1",
-                api_key=api_key
-            )
-            self.api_key_valid = True
-        
-        self.model_name = model_name
+    def __init__(self, primary_model: str = 'gemini-2.5-flash', fallback_model: str = 'deepseek-ai/DeepSeek-V4-Flash:novita'):
+        # NOTE: We do NOT read API keys here — they are read lazily in _ensure_clients()
+        # so that hot-reloads and import-order issues never cause mock mode.
+        self.primary_model = primary_model
+        self.fallback_model = fallback_model
+        self.gemini_client = None
+        self.deepseek_client = None
+        self._clients_ready = False  # Flag: True once clients were successfully created
         self.retriever = RetrievalAgent()
         self.decomposer = QueryDecompositionAgent()
         self.arxiv_tool = ArxivTool()
+
+    def _ensure_clients(self) -> bool:
+        """
+        Lazily builds the OpenAI clients using API keys read from the environment
+        at call time. Returns True if at least one valid client is available.
+        """
+        if self._clients_ready:
+            return True
+        
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        hf_token = os.getenv("HF_TOKEN")
+
+        if gemini_api_key and gemini_api_key != "your_gemini_api_key_here":
+            self.gemini_client = OpenAI(
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                api_key=gemini_api_key
+            )
+            
+        if hf_token and hf_token != "your_hf_token_here":
+            self.deepseek_client = OpenAI(
+                base_url="https://router.huggingface.co/v1",
+                api_key=hf_token
+            )
+
+        if self.gemini_client or self.deepseek_client:
+            self._clients_ready = True
+            return True
+            
+        return False
 
     def _multi_hop_retrieve(self, sub_questions: List[str]) -> List[Dict]:
         """
@@ -140,35 +164,59 @@ class ReasoningAgent:
         Answer:
         """
         
-        if self.api_key_valid:
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "user", "content": prompt}
-                    ]
-                )
-                answer_text = response.choices[0].message.content
-            except Exception as e:
-                print(f"LLM generation failed: {e}. Falling back to deterministic summary.")
-                # Self-healing fallback: compile a clean summary of the evidence
+        llm_fallback_used = False
+        if self._ensure_clients():
+            answer_text = None
+            gemini_failed = False
+            
+            # Primary: Gemini
+            if self.gemini_client:
+                try:
+                    response = self.gemini_client.chat.completions.create(
+                        model=self.primary_model,
+                        messages=[
+                            {"role": "user", "content": prompt}
+                        ]
+                    )
+                    answer_text = response.choices[0].message.content
+                except Exception as e:
+                    print(f"Gemini LLM generation failed: {e}. Falling back to DeepSeek...")
+                    gemini_failed = True
+                    
+            # Fallback: DeepSeek
+            if not answer_text and self.deepseek_client:
+                if gemini_failed:
+                    llm_fallback_used = True
+                try:
+                    response = self.deepseek_client.chat.completions.create(
+                        model=self.fallback_model,
+                        messages=[
+                            {"role": "user", "content": prompt}
+                        ]
+                    )
+                    answer_text = response.choices[0].message.content
+                except Exception as e:
+                    print(f"DeepSeek LLM generation failed: {e}. Falling back to deterministic summary.")
+
+            # Deterministic Summary Fallback
+            if not answer_text:
                 if evidence:
                     top_text = evidence[0]['text'][:300].strip().replace('\n', ' ')
                     answer_text = (
-                        f"[Service Degradation Fallback: {str(e)}]\n\n"
+                        f"[Service Degradation Fallback]\n\n"
                         f"Based on retrieved sources (e.g., '{evidence[0].get('title', 'Document')}'):\n"
                         f"\"{top_text}...\" [Source 1]"
                     )
                 else:
                     answer_text = (
-                        f"[Service Degradation Fallback: {str(e)}]\n\n"
+                        f"[Service Degradation Fallback]\n\n"
                         "I don't have enough grounded information to answer this question."
                     )
         else:
             answer_text = (
-                "[Mock Mode: No HF_TOKEN provided]\n\n"
+                "[Mock Mode: No API keys provided]\n\n"
                 f"Based on {len(evidence)} evidence chunks retrieved across {len(sub_questions)} sub-questions, "
-                "I would synthesize a grounded answer here using DeepSeek."
+                "I would synthesize a grounded answer here using an LLM."
             )
         timings['llm_ms'] = round((time.time() - t0) * 1000, 2)
         timings['total_ms'] = sum(timings.values())
@@ -180,5 +228,6 @@ class ReasoningAgent:
             "sources": evidence,
             "confidence": confidence,
             "arxiv_fallback_used": arxiv_used,
+            "llm_fallback_used": llm_fallback_used,
             "latency": timings
         }

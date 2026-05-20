@@ -4,6 +4,23 @@ import time
 from typing import Any
 from src.database.connection import get_redis_client
 
+
+class _SafeEncoder(json.JSONEncoder):
+    """
+    Handles types that standard json.dumps cannot serialize:
+    - numpy float32/float64 → Python float
+    - numpy int types       → Python int
+    - any other non-standard object → str(obj) as fallback
+    """
+    def default(self, obj):
+        try:
+            # Covers numpy floats, numpy ints, and similar numeric wrappers
+            if hasattr(obj, 'item'):
+                return obj.item()
+            return float(obj)
+        except (TypeError, ValueError):
+            return str(obj)
+
 class CacheManager:
     """
     Intelligent Redis Query Cache.
@@ -51,7 +68,7 @@ class CacheManager:
         """
         try:
             key = self._cache_key(query)
-            self.redis.setex(key, self.TTL_SECONDS, json.dumps(response))
+            self.redis.setex(key, self.TTL_SECONDS, json.dumps(response, cls=_SafeEncoder))
         except Exception as e:
             print(f"Cache SET error: {e}")
     

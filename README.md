@@ -1,6 +1,6 @@
 # 🔬 Multi-Agent RAG Pipeline over Scientific Data
 
-A production-grade **multi-agent retrieval and reasoning pipeline** for scientific knowledge — built from scratch using FastAPI, Qdrant, PostgreSQL, Neo4j, Redis, and Gemini 2.5 Flash.
+A production-style Multi-Agent Scientific RAG system with FastAPI, Qdrant, PostgreSQL, Redis, Neo4j, dual-LLM fallback, hallucination detection, and source-grounded response validation.
 
 ## ✨ What Makes This Different
 
@@ -20,42 +20,25 @@ Most RAG systems are "single-shot": one question → one search → one answer. 
 ## 🏗️ Architecture
 
 ```
-User Question
-     │
-     ▼
-┌─────────────────────┐
-│  FastAPI /query      │  ← Redis Cache Check (hit → instant return)
-└─────────────────────┘
-     │ cache miss
-     ▼
-┌─────────────────────┐
-│ Query Decomposition  │  ← Gemini breaks question into focused sub-queries
-│      Agent           │
-└─────────────────────┘
-     │ [sub-q1, sub-q2, sub-q3]
-     ▼
-┌─────────────────────┐
-│   Retrieval Agent    │  ← Parallel semantic search per sub-query (Qdrant)
-│  (Multi-Hop)         │  ← Deduplicates, tags each chunk with its sub-query
-└─────────────────────┘
-     │ low confidence?
-     ▼
-┌─────────────────────┐
-│   ArXiv Tool         │  ← Searches ArXiv API, downloads & ingests PDF live
-│  (Fallback)          │
-└─────────────────────┘
-     │
-     ▼
-┌─────────────────────┐
-│   Reasoning Agent    │  ← Gemini 2.5 Flash with strict anti-hallucination prompt
-│  (Gemini 2.5 Flash)  │  ← Returns answer with [Source N] citations
-└─────────────────────┘
-     │
-     ▼
-┌─────────────────────┐
-│  PostgreSQL Log      │  ← Logs query, latency, cache hit/miss
-│  Redis Cache Store   │  ← Caches result for future identical queries
-└─────────────────────┘
+User Query
+    ↓
+FastAPI
+    ↓
+Query Decomposition Agent
+    ↓
+Retrieval Agent
+    ↓
+Qdrant + PostgreSQL + Neo4j
+    ↓
+Reasoning Agent
+    ↓
+Gemini
+      ↓(429)
+DeepSeek Fallback
+    ↓
+Validation Agent
+    ↓
+Grounded Response + Sources
 ```
 
 ---
@@ -184,8 +167,9 @@ curl -X POST http://localhost:8000/query \
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/` | Health check |
-| `GET` | `/docs` | Interactive Swagger UI |
+| `GET` | `/` | Home Welcome status |
+| `GET` | `/health` | Service health status |
+| `GET` | `/metrics` | System analytics and metrics |
 | `POST` | `/ingest` | Upload & ingest PDF or CSV |
 | `POST` | `/query` | Multi-hop RAG query |
 | `GET` | `/graph/papers` | Neo4j Author→Paper relationships |
